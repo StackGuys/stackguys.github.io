@@ -307,20 +307,21 @@ AB.forEach((a,i)=>{
   b.onclick=e=>{useAb(a.k);e.currentTarget.blur()};
   $('bar').appendChild(b);a.el=b;
 });
+/* an ability is "active" while its effect is running; there is no wait after it ends */
+function isOn(k){return k==='mult'?fx.mult>0:(k==='resize'?false:fx[k]>clock)}
 function updateBar(){
   AB.forEach(a=>{
-    const k=a.k,b=a.el,cdl=(cd[k]||0)-clock;let s=a.n,on=false;
-    if(k==='mult'&&fx.mult>0){s=fx.mult+' left';on=true}
-    else if(k!=='mult'&&k!=='resize'&&fx[k]-clock>0){s=Math.ceil(fx[k]-clock)+'s';on=true}
-    else if(cdl>0)s='⏱ '+Math.ceil(cdl)+'s';
-    b.disabled=state!=='play'||inv[k]<1||cdl>0;
+    const k=a.k,b=a.el;let s=a.n;const on=isOn(k);
+    if(k==='mult'&&on)s=fx.mult+' left';
+    else if(on)s=Math.ceil(fx[k]-clock)+'s';
+    b.disabled=state!=='play'||inv[k]<1||on;
     b.classList.toggle('on',on);
     b.children[0].textContent=a.ic;b.children[1].textContent=s;b.children[2].textContent=inv[k];
   });
 }
 function useAb(k){
-  if(state!=='play'||!cur||inv[k]<1||(cd[k]||0)>clock)return;
-  inv[k]--;cd[k]=clock+120;saveInv();
+  if(state!=='play'||!cur||inv[k]<1||isOn(k))return;
+  inv[k]--;saveInv();
   if(k==='slow')fx.slow=clock+60;
   else if(k==='acc')fx.acc=clock+30;
   else if(k==='combo')fx.combo=clock+45;
@@ -401,7 +402,7 @@ showWho();
 /* ---- first-play tutorial ---- */
 const TUT=[
  {t:'How to play',p:['A block slides across the screen. Tap, click or press Space to drop it onto your tower.','Anything that hangs over the block below is sliced off, so your tower gets narrower.','Miss the tower completely and the round is over.','To pause, use the pause button, right-click or press P.']},
- {t:'Abilities',p:['You start every round with one charge of each ability. Use them from the bar at the bottom, or press keys 1 to 5.','Charges never come back with time. The only way to get more is the free spin wheel.','\ud83d\udc22 Slow: halves block speed for 60 seconds.','\u00d72 Multiply: double points for the next 50 blocks.','\u2194 Resize: restores your whole tower to full width.','\ud83c\udfaf Accuracy: doubles the perfect-drop window for 30 seconds.','\ud83d\udd25 Combo: your block regrows 1.5\u00d7 faster after perfects for 45 seconds.','After you use an ability, you have to wait 2 minutes before using another charge of it. That wait is separate from how long its effect lasts.']},
+ {t:'Abilities',p:['You start every round with one charge of each ability. Use them from the bar at the bottom, or press keys 1 to 5.','Charges never come back with time. The only way to get more is the free spin wheel.','\ud83d\udc22 Slow: halves block speed for 60 seconds.','\u00d72 Multiply: double points for the next 50 blocks.','\u2194 Resize: restores your whole tower to full width.','\ud83c\udfaf Accuracy: doubles the perfect-drop window for 30 seconds.','\ud83d\udd25 Combo: your block regrows 1.5\u00d7 faster after perfects for 45 seconds.','There is no waiting between uses. You can use another charge as soon as the effect of the last one ends.']},
  {t:'Free spin wheel',p:['Press Free spin at the top to watch a short ad. When it ends, the wheel spins and gives you one random ability. All five are equally likely.','You get 10 spins every round.']},
  {t:'Perfect combos',p:['Drop a block exactly on the one below for a perfect. Perfects in a row double in value: 1, 2, 4, 8 and so on, up to 1,024 points per block (2,048 with Multiply).','Three perfects in a row also make your block wider again.','A sliced block resets your streak.']},
  {t:'Your goals',p:['Stack as high as you can and beat your best score.','Chain perfect streaks for big points, and use your abilities at the right moment.','Check the Leaderboard on the home screen to see your best runs.']}
