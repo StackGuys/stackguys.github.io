@@ -375,15 +375,24 @@ updAd();
 let nameMem='';
 function getName(){let n='';try{n=localStorage.getItem('stack-name')||''}catch(e){}return n||nameMem}
 function showWho(){$('who').textContent=getName()?'Playing as '+getName():''}
-/* Names are checked for format here. A name can only be guaranteed unique across all players once a shared database is connected. */
+/* Names are checked for format here, then claimed in Firestore (see the module script at the bottom) so no two players can share one. */
 function nameErr(m){$('nameErr').textContent=m}
 function openName(){nameErr('');$('nameModal').classList.remove('hide');setTimeout(()=>$('nameIn').focus(),50)}
-function submitName(){
+async function submitName(){
   const v=$('nameIn').value.trim().replace(/\s+/g,' ');
   if(v.length<3||v.length>16){nameErr('Use 3 to 16 characters.');return}
   if(!/^[A-Za-z0-9_ -]+$/.test(v)){nameErr('Use letters, numbers, spaces, _ or - only.');return}
-  nameMem=v;try{localStorage.setItem('stack-name',v)}catch(e){}
-  $('nameModal').classList.add('hide');showWho();act(1);
+  $('nameOk').disabled=true;nameErr('Checking…');
+  try{
+    if(!window.claimName)throw new Error('offline');
+    const finalName=await window.claimName(v);
+    nameMem=finalName;try{localStorage.setItem('stack-name',finalName)}catch(e){}
+    nameErr('');$('nameOk').disabled=false;
+    $('nameModal').classList.add('hide');showWho();act(1);
+  }catch(e){
+    $('nameOk').disabled=false;
+    nameErr(e&&e.message==='taken'?'That name is taken. Try another.':'Could not check the name. Try again.');
+  }
 }
 $('nameOk').onclick=submitName;
 $('nameIn').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();submitName()}};
@@ -449,6 +458,37 @@ function draw(){
   ctx.fillStyle='#0003';ctx.fillRect(0,base,W,vh);
 }
 requestAnimationFrame(frame);
+</script>
+<script type="module">
+/* Unique player names: each name is claimed once in Firestore (usernames/{name}) and tied to the player's anonymous ID. */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, doc, runTransaction } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const app = initializeApp({
+  apiKey: "AIzaSyBMcVtHN6boOwRCkgCtAOcVP_cwlyBq928",
+  authDomain: "stackguys.firebaseapp.com",
+  projectId: "stackguys",
+  storageBucket: "stackguys.firebasestorage.app",
+  messagingSenderId: "7183555529",
+  appId: "1:7183555529:web:530ef0fbb0d99cf26d2618"
+});
+const auth = getAuth(app), fdb = getFirestore(app);
+
+window.claimName = async (display) => {
+  if (!auth.currentUser) await signInAnonymously(auth);
+  const uid = auth.currentUser.uid;
+  const key = display.toLowerCase().replace(/[\s-]+/g, '_');
+  const nameRef = doc(fdb, 'usernames', key), userRef = doc(fdb, 'users', uid);
+  return runTransaction(fdb, async (tx) => {
+    const [n, u] = await Promise.all([tx.get(nameRef), tx.get(userRef)]);
+    if (u.exists() && u.data().username) return u.data().display; /* one name per player */
+    if (n.exists()) throw new Error('taken');
+    tx.set(nameRef, { uid, display });
+    tx.set(userRef, { username: key, display });
+    return display;
+  });
+};
 </script>
 </body>
 </html>
