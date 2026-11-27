@@ -42,7 +42,7 @@ canvas{width:100%;height:100%;display:block}
 .tg input:checked{background:#1f9d6b}
 .tg input:checked::after{transform:translateX(18px)}
 .foot{font-size:12px;color:#fff;opacity:.8;text-decoration:underline;margin-top:-2px}
-#tut{position:absolute;inset:0;z-index:8;background:#000a;display:flex;align-items:center;justify-content:center;padding:20px}
+#tut,#nameModal{position:absolute;inset:0;z-index:8;background:#000a;display:flex;align-items:center;justify-content:center;padding:20px}
 .tbox{background:var(--bg);color:var(--fg);border-radius:20px;padding:26px 24px 22px;width:100%;max-width:340px;box-sizing:border-box;max-height:90vh;overflow:auto;box-shadow:0 10px 40px #0006;text-align:left}
 .tbox h2{margin:0 0 10px;font-size:22px}
 .tbox p{margin:7px 0;font-size:14px;color:var(--muted);line-height:1.5}
@@ -50,6 +50,8 @@ canvas{width:100%;height:100%;display:block}
 .dots i{width:7px;height:7px;border-radius:50%;background:#8886}
 .dots i.on{background:var(--fg)}
 .tbox .btn{width:100%;margin-top:12px;padding:12px 18px}
+#nameIn{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:11px 14px;margin-top:8px;border-radius:12px;border:1px solid #8886;background:transparent;color:var(--fg)}
+.err{color:#d6455d!important;min-height:18px;font-size:13px!important;margin:6px 0 0!important}
 .stackbtns{display:flex;flex-direction:column;gap:8px;margin-top:12px}
 .stackbtns .btn{margin-top:0}
 #pbtn{display:flex;align-items:center;justify-content:center;gap:4px;padding:0}
@@ -105,6 +107,7 @@ canvas{width:100%;height:100%;display:block}
   <div id="score">0</div>
   <div id="msg"></div>
   <div id="streak"></div>
+  <div id="nameModal" class="hide"><div class="tbox"><h2>Choose your name</h2><p>Pick a name before you play. It is shown with your scores, and each player gets one name.</p><input id="nameIn" maxlength="16" autocomplete="off" placeholder="Your name"><p id="nameErr" class="err"></p><button class="btn" id="nameOk">Continue</button></div></div>
   <div id="tut" class="hide"><div class="tbox"><div id="tutBody"></div><div class="dots" id="tutDots"></div><button class="btn" id="tutNext">Next</button></div></div>
   
   <div id="start">
@@ -115,6 +118,7 @@ canvas{width:100%;height:100%;display:block}
       </div>
       <div class="best">BEST<b id="best0">0</b></div>
       <p class="hint">Tap, click or press space to drop the block</p>
+      <p class="hint" id="who"></p>
     </div>
     <div class="hBot">
       <div class="chips"><span>🐢</span><span>×2</span><span>↔</span><span>🎯</span><span>🔥</span></div>
@@ -203,11 +207,11 @@ function end(){
   setTimeout(()=>{if(state==='over')$('over').classList.remove('hide')},600);
 }
 function act(go){initAudio();if(paused)return;
-  if(state==='idle'){if(!go)return;if(lbOpen())return;if(needTut()){openTut();return}state='play';$('start').classList.add('hide');$('wrap').classList.remove('home');reset();resetSpins();}
+  if(state==='idle'){if(!go)return;if(lbOpen())return;if(!getName()){openName();return}if(needTut()){openTut();return}state='play';$('start').classList.add('hide');$('wrap').classList.remove('home');reset();resetSpins();}
   else if(state==='play')place();
   else if(state==='over'&&!$('over').classList.contains('hide')){$('over').classList.add('hide');state='play';reset();resetSpins();}
 }
-const lbOpen=()=>adBusy||!$('lb').classList.contains('hide')||!$('tut').classList.contains('hide');
+const lbOpen=()=>adBusy||!$('lb').classList.contains('hide')||!$('tut').classList.contains('hide')||!$('nameModal').classList.contains('hide');
 function showStreak(){$('streak').textContent=combo>0?'Streak '+combo+' · next perfect +'+Math.min(1024,Math.pow(2,combo)):''}
 let paused=false;
 function togglePause(){if(state!=='play')return;paused=!paused;$('pause').classList.toggle('hide',!paused)}
@@ -265,7 +269,7 @@ function renderLB(){
   const ol=$('lbList');ol.textContent='';
   let items;
   if(db){$('lbTitle').textContent='Leaderboard';items=rows.map(r=>({n:names[r.id]||'Player',s:r.best,me:r.id===myId}))}
-  else{$('lbTitle').textContent='Your best runs';items=local().map(s=>({n:'Run',s}))}
+  else{$('lbTitle').textContent='Your best runs';items=local().map(s=>({n:getName()||'Run',s}))}
   if(!items.length){const li=document.createElement('li');li.textContent='No scores yet';ol.appendChild(li);return}
   items.forEach((it,i)=>{
     const li=document.createElement('li');if(it.me)li.className='me';
@@ -366,6 +370,24 @@ document.addEventListener('click',e=>{
 function resetSpins(){sp.n=0;AB.forEach(a=>{inv[a.k]=1});saveInv();updAd()}
 updAd();
 
+
+/* ---- player name ---- */
+let nameMem='';
+function getName(){let n='';try{n=localStorage.getItem('stack-name')||''}catch(e){}return n||nameMem}
+function showWho(){$('who').textContent=getName()?'Playing as '+getName():''}
+/* Names are checked for format here. A name can only be guaranteed unique across all players once a shared database is connected. */
+function nameErr(m){$('nameErr').textContent=m}
+function openName(){nameErr('');$('nameModal').classList.remove('hide');setTimeout(()=>$('nameIn').focus(),50)}
+function submitName(){
+  const v=$('nameIn').value.trim().replace(/\s+/g,' ');
+  if(v.length<3||v.length>16){nameErr('Use 3 to 16 characters.');return}
+  if(!/^[A-Za-z0-9_ -]+$/.test(v)){nameErr('Use letters, numbers, spaces, _ or - only.');return}
+  nameMem=v;try{localStorage.setItem('stack-name',v)}catch(e){}
+  $('nameModal').classList.add('hide');showWho();act(1);
+}
+$('nameOk').onclick=submitName;
+$('nameIn').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();submitName()}};
+showWho();
 
 /* ---- first-play tutorial ---- */
 const TUT=[
