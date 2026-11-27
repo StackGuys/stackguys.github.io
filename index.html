@@ -70,6 +70,7 @@ canvas{width:100%;height:100%;display:block}
 .best b{display:block;font-size:46px;letter-spacing:0;line-height:1.1}
 .hint{font-size:13px;opacity:.8;margin:0}
 .hBot{width:100%;display:flex;flex-direction:column;align-items:center;gap:14px}
+.adwrap{width:100%;max-width:320px;margin-top:4px;text-align:center}
 .chips{display:flex;gap:10px}
 .chips span{width:42px;height:42px;border-radius:12px;background:#ffffff22;display:flex;align-items:center;justify-content:center;font-size:18px}
 .cap{font-size:12px;opacity:.8;margin-top:-4px}
@@ -126,6 +127,18 @@ canvas{width:100%;height:100%;display:block}
       <button class="link" data-lb>Leaderboard</button>
       <button class="play" id="playBtn">PLAY</button>
       <a class="foot" href="privacy.html">Privacy Policy</a>
+      <div class="adwrap">
+        <!-- Adserve -->
+        <ins class="adsbygoogle"
+             style="display:block"
+             data-ad-client="ca-pub-4779596323710666"
+             data-ad-slot="9787480701"
+             data-ad-format="auto"
+             data-full-width-responsive="true"></ins>
+        <script>
+             (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+      </div>
     </div>
   </div>
   <div id="over" class="card hide"><p class="nb hide" id="nb">New best!</p><p>Game over</p><b id="final">0</b><p>Best: <span id="best1">0</span></p><p style="margin-top:12px">Tap to play again</p><div class="row"><button class="btn" data-lb>Leaderboard</button><button class="btn" id="homeBtn">Home</button></div></div>
@@ -219,7 +232,7 @@ let paused=false;
 function togglePause(){if(state!=='play')return;paused=!paused;$('pause').classList.toggle('hide',!paused)}
 window.addEventListener('contextmenu',e=>e.preventDefault());
 window.addEventListener('pointerdown',e=>{
-  if(e.target.closest('button,a')||lbOpen())return;
+  if(e.target.closest('button,a,.adwrap')||lbOpen())return;
   if(e.button===2){e.preventDefault();togglePause();return}
   if(e.button!==0)return;
   e.preventDefault();
