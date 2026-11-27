@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // A username is claimed once and can never be changed or released.
+    match /usernames/{username} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && username == username.lower()
+        && username.matches('^[a-z0-9_]{3,20}$')
+        // the claim must be written in the same batch/transaction as the profile pointing at it
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.username == username
+        // the player must not already own a username
+        && (!exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            || !('username' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data));
+      allow update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if request.auth != null;
+
+      // A profile may only carry a username that this same player has claimed.
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && (!('username' in request.resource.data)
+            || getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == uid);
+
+      allow update: if request.auth != null
+        && request.auth.uid == uid
+        && (
+          // username (and display name) already set: both are locked
+          ('username' in resource.data
+            && request.resource.data.username == resource.data.username
+            && request.resource.data.get('display', null) == resource.data.get('display', null))
+          // first time setting it: must match a claim made in the same write
+          || (!('username' in resource.data)
+              && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.get('username', '_none_'))).data.uid == uid)
+          // no username involved at all
+          || (!('username' in resource.data) && !('username' in request.resource.data))
+        );
+    }
+  }
+}
