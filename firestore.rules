@@ -17,6 +17,27 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // One leaderboard row per player. Anyone can read; a player can only write their own row,
+    // under their claimed name, and a stored score can only ever go up.
+    match /scores/{uid} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['best', 'name'])
+        && request.resource.data.best is int
+        && request.resource.data.best > 0
+        && request.resource.data.best <= 100000000
+        && request.resource.data.name == get(/databases/$(database)/documents/users/$(uid)).data.display;
+      allow update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['best', 'name'])
+        && request.resource.data.best is int
+        && request.resource.data.best > resource.data.best
+        && request.resource.data.best <= 100000000
+        && request.resource.data.name == get(/databases/$(database)/documents/users/$(uid)).data.display;
+      allow delete: if false;
+    }
+
     match /users/{uid} {
       allow read: if request.auth != null;
 
