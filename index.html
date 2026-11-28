@@ -82,8 +82,9 @@ canvas{width:100%;height:100%;display:block}
 #mute{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:12px;width:40px;height:40px;border-radius:50%;border:0;background:#0004;color:#fff;font-size:18px;cursor:pointer;z-index:4}
 .nb{color:#d49a00;font-weight:700;font-size:16px!important;margin:0 0 6px!important}
 #lb{z-index:5;min-width:270px}
-#lb ol{list-style:none;margin:10px 0 0;padding:0;text-align:left;font-size:15px}
+#lb ol{list-style:none;margin:10px 0 0;padding:0;text-align:left;font-size:15px;max-height:52vh;overflow-y:auto}
 #lb li{display:flex;justify-content:space-between;gap:24px;padding:6px 0;border-bottom:1px solid #8884}
+#lb{width:min(340px,88vw);box-sizing:border-box}
 #lb li.me{font-weight:700}
 #adbtn{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);right:60px;height:40px;border:0;border-radius:999px;padding:0 14px;background:#0004;color:#fff;font:inherit;font-weight:600;font-size:13px;cursor:pointer;z-index:4}
 #adbtn:disabled{opacity:.5;cursor:default}
@@ -217,7 +218,7 @@ function end(){
   if(isNew){best=score;try{localStorage.setItem('stack-best',best)}catch(e){}}
   $('nb').classList.toggle('hide',!isNew);$('best0').textContent=best;
   sfx('over');if(isNew)setTimeout(()=>sfx('best'),550);
-  recordScore(score);
+  if(isNew)recordScore(score);
   $('final').textContent=score;$('best1').textContent=best;
   setTimeout(()=>{if(state==='over')$('over').classList.remove('hide')},600);
 }
@@ -273,41 +274,42 @@ function sfx(k,n){
 $('mute').onclick=e=>{muted=!muted;initAudio();$('mute').textContent=muted?'🔇':'🔊';try{localStorage.setItem('stack-mute',muted?'1':'0')}catch(err){}e.currentTarget.blur()};
 
 /* ---- leaderboard ---- */
-let db=null,user=null,myId=null,rows=[],names={};
-const local=()=>{try{return JSON.parse(localStorage.getItem('stack-top')||'[]')}catch(e){return[]}};
+let lbSeq=0;
+/* The leaderboard holds one row per player (their best score), top 100. A score is only sent when it beats the player's best. */
 async function recordScore(s){
-  try{const t=local();t.push(s);t.sort((a,b)=>b-a);localStorage.setItem('stack-top',JSON.stringify(t.slice(0,10)))}catch(e){}
-  if(!db||!myId||s<=0||!(consent&&consent.lb))return;
-  try{const ref=db.doc('scores/'+myId);const snap=await ref.get();const old=snap.exists?(snap.data().best||0):0;if(s>old)await ref.set({best:s})}catch(e){}
+  if(s<=0||!(consent&&consent.lb)||!window.submitScore)return;
+  try{await window.submitScore(s)}catch(e){}
 }
-function renderLB(){
-  const ol=$('lbList');ol.textContent='';
-  let items;
-  if(db){$('lbTitle').textContent='Leaderboard';items=rows.map(r=>({n:names[r.id]||'Player',s:r.best,me:r.id===myId}))}
-  else{$('lbTitle').textContent='Your best runs';items=local().map(s=>({n:getName()||'Run',s}))}
-  if(!items.length){const li=document.createElement('li');li.textContent='No scores yet';ol.appendChild(li);return}
+function lbMsg(t){const ol=$('lbList');ol.textContent='';const li=document.createElement('li');li.textContent=t;ol.appendChild(li)}
+async function renderLB(){
+  const my=++lbSeq,ol=$('lbList');
+  $('lbTitle').textContent='Leaderboard';
+  lbMsg('Loading…');
+  let items,uid=null;
+  try{
+    if(!window.topScores)throw new Error('offline');
+    if(best>0&&getName())await recordScore(best); /* sync an existing best that was never uploaded; no-op unless higher */
+    const rows=await window.topScores();
+    uid=window.myUid?window.myUid():null;
+    items=rows.map(r=>({n:r.name||'Player',s:r.best,me:!!uid&&r.id===uid}));
+  }catch(e){
+    if(my!==lbSeq)return;
+    $('lbTitle').textContent='Your best';
+    items=best>0?[{n:getName()||'You',s:best,me:true}]:[];
+  }
+  if(my!==lbSeq)return;
+  ol.textContent='';
+  if(!items.length){lbMsg('No scores yet');return}
   items.forEach((it,i)=>{
     const li=document.createElement('li');if(it.me)li.className='me';
     const a=document.createElement('span');a.textContent=(i+1)+'. '+it.n+(it.me?' (you)':'');
     const b=document.createElement('span');b.textContent=it.s;
     li.append(a,b);ol.appendChild(li);
   });
+  const me=ol.querySelector('li.me');if(me)me.scrollIntoView({block:'nearest'});
 }
 document.querySelectorAll('[data-lb]').forEach(b=>b.onclick=e=>{renderLB();$('lb').classList.remove('hide');e.currentTarget.blur()});
-$('lbClose').onclick=e=>{$('lb').classList.add('hide');e.currentTarget.blur()};
-(async function initShared(){
-  try{
-    if(!window.claude)return;
-    db=await claude.use('db');user=await claude.use('user');
-    if(user)myId=await user.id();
-    if(!db)return;
-    db.collection('scores').orderBy('best','desc').limit(10).onSnapshot(async snap=>{
-      rows=snap.docs.map(d=>({id:d.id,best:d.data().best||0}));
-      try{if(user){const ps=await user.profiles(rows.map(r=>r.id));rows.forEach(r=>{names[r.id]=(ps&&ps[r.id]&&ps[r.id].name)||''})}}catch(e){}
-      if(lbOpen())renderLB();
-    },()=>{});
-  }catch(e){}
-})();
+$('lbClose').onclick=e=>{lbSeq++;$('lb').classList.add('hide');e.currentTarget.blur()};
 
 /* ---- abilities ---- */
 const AB=[{k:'slow',ic:'🐢',n:'Slow'},{k:'mult',ic:'×2',n:'Multiply'},{k:'resize',ic:'↔',n:'Resize'},{k:'acc',ic:'🎯',n:'Accuracy'},{k:'combo',ic:'🔥',n:'Combo'}];
@@ -416,7 +418,7 @@ showWho();
 /* ---- first-play tutorial ---- */
 const TUT=[
  {t:'How to play',p:['A block slides across the screen. Tap, click or press Space to drop it onto your tower.','Anything that hangs over the block below is sliced off, so your tower gets narrower.','Miss the tower completely and the round is over.','To pause, use the pause button, right-click or press P.']},
- {t:'Abilities',p:['You start every round with one charge of each ability. Use them from the bar at the bottom, or press keys 1 to 5.','Charges never come back with time. The only way to get more is the free spin wheel.','\ud83d\udc22 Slow: halves block speed for 60 seconds.','\u00d72 Multiply: double points for the next 25 blocks.','\u2194 Resize: restores your whole tower to full width.','\ud83c\udfaf Accuracy: doubles the perfect-drop window for 30 seconds.','\ud83d\udd25 Combo: your block regrows 1.5\u00d7 faster after perfects for 45 seconds.','There is no waiting between uses. You can use another charge as soon as the effect of the last one ends.']},
+ {t:'Abilities',p:['You start every round with one charge of each ability. Use them from the bar at the bottom, or press keys 1 to 5.','Charges never come back with time. The only way to get more is the free spin wheel.','🐢 Slow: halves block speed for 60 seconds.','×2 Multiply: double points for the next 25 blocks.','↔ Resize: restores your whole tower to full width.','🎯 Accuracy: doubles the perfect-drop window for 30 seconds.','🔥 Combo: your block regrows 1.5× faster after perfects for 45 seconds.','There is no waiting between uses. You can use another charge as soon as the effect of the last one ends.']},
  {t:'Free spin wheel',p:['Press Free spin at the top to watch a short ad. When it ends, the wheel spins and gives you one random ability. All five are equally likely.','You get 10 spins every round.']},
  {t:'Perfect combos',p:['Drop a block exactly on the one below for a perfect. Perfects in a row double in value: 1, 2, 4, 8 and so on, up to 1,024 points per block (2,048 with Multiply).','Three perfects in a row also make your block wider again.','A sliced block resets your streak.']},
  {t:'Your goals',p:['Stack as high as you can and beat your best score.','Chain perfect streaks for big points, and use your abilities at the right moment.','Check the Leaderboard on the home screen to see your best runs.']}
@@ -478,7 +480,7 @@ requestAnimationFrame(frame);
 /* Unique player names: each name is claimed once in Firestore (usernames/{name}) and tied to the player's anonymous ID. */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-import { getFirestore, doc, runTransaction } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getFirestore, doc, runTransaction, collection, query, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const app = initializeApp({
   apiKey: "AIzaSyBMcVtHN6boOwRCkgCtAOcVP_cwlyBq928",
@@ -489,6 +491,27 @@ const app = initializeApp({
   appId: "1:7183555529:web:530ef0fbb0d99cf26d2618"
 });
 const auth = getAuth(app), fdb = getFirestore(app);
+
+const ready = async () => { await auth.authStateReady(); if (!auth.currentUser) await signInAnonymously(auth); return auth.currentUser; };
+window.myUid = () => (auth.currentUser ? auth.currentUser.uid : null);
+
+/* One score document per player (scores/{uid}), written only when it beats the stored best. */
+window.submitScore = async (best) => {
+  const u = await ready();
+  const userRef = doc(fdb, 'users', u.uid), ref = doc(fdb, 'scores', u.uid);
+  return runTransaction(fdb, async (tx) => {
+    const [us, sc] = await Promise.all([tx.get(userRef), tx.get(ref)]);
+    if (!us.exists() || !us.data().display) return false;       /* needs a claimed name */
+    if (sc.exists() && sc.data().best >= best) return false;     /* not a new high score */
+    tx.set(ref, { best, name: us.data().display });
+    return true;
+  });
+};
+window.topScores = async () => {
+  await ready();
+  const snap = await getDocs(query(collection(fdb, 'scores'), orderBy('best', 'desc'), limit(100)));
+  return snap.docs.map(d => ({ id: d.id, name: d.data().name, best: d.data().best }));
+};
 
 window.claimName = async (display) => {
   if (!auth.currentUser) await signInAnonymously(auth);
